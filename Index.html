@@ -1,0 +1,665 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>توكتوك العياط</title>
+
+<link rel="stylesheet"
+href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 12px;
+  font-family: Arial, sans-serif;
+  background: #f1f4f2;
+}
+
+.container {
+  max-width: 550px;
+  margin: auto;
+  background: white;
+  padding: 16px;
+  border-radius: 18px;
+  box-shadow: 0 3px 12px #ccc;
+}
+
+h2 {
+  color: #147a48;
+  text-align: center;
+  font-size: 25px;
+}
+
+.subtitle {
+  text-align: center;
+  color: #666;
+}
+
+label {
+  display: block;
+  margin-top: 15px;
+  font-weight: bold;
+}
+
+select {
+  width: 100%;
+  padding: 14px;
+  margin-top: 7px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  font-size: 16px;
+  background: white;
+}
+
+.map-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+button {
+  border: none;
+  border-radius: 11px;
+  padding: 15px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.map-actions button {
+  flex: 1;
+  background: #555;
+  color: white;
+}
+
+.map-actions button.active {
+  background: #16834d;
+}
+
+.location-btn {
+  width: 100%;
+  background: #1769aa;
+  color: white;
+  margin-top: 12px;
+}
+
+#map {
+  width: 100%;
+  height: 430px;
+  margin-top: 12px;
+  border: 2px solid #16834d;
+  border-radius: 13px;
+  z-index: 1;
+}
+
+#status {
+  text-align: center;
+  color: #147a48;
+  font-weight: bold;
+  line-height: 1.7;
+  margin: 15px 0;
+}
+
+.main-btn {
+  width: 100%;
+  background: #16834d;
+  color: white;
+  margin-top: 15px;
+}
+
+button:disabled {
+  opacity: 0.6;
+}
+
+.price-box {
+  display: none;
+  background: #e8f7ed;
+  border-radius: 13px;
+  padding: 18px;
+  margin-top: 18px;
+  text-align: center;
+}
+
+.price-box strong {
+  display: block;
+  color: #147a48;
+  font-size: 30px;
+  margin: 10px;
+}
+
+.price-details {
+  line-height: 2;
+  text-align: right;
+}
+
+.note {
+  color: #777;
+  font-size: 13px;
+  line-height: 1.7;
+  text-align: center;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>🚖 توكتوك العياط</h2>
+
+<p class="subtitle">مشوارك علينا.. اختار وجهتك بسهولة</p>
+
+<label>مكان الركوب (اختياري)</label>
+<select id="from">
+<option value="">حدد من الخريطة أو اختر المكان</option>
+</select>
+
+<label>مكان الوصول (اختياري)</label>
+<select id="to">
+<option value="">حدد من الخريطة أو اختر المكان</option>
+</select>
+
+<div class="map-actions">
+<button id="pickupBtn" onclick="choosePickup()">
+📍 مكان الركوب
+</button>
+
+<button id="destinationBtn" onclick="chooseDestination()">
+🏁 مكان الوصول
+</button>
+</div>
+
+<button class="location-btn" id="myLocationBtn"
+onclick="getMyLocation()">
+📍 حدد موقعي الحالي
+</button>
+
+<div id="status">
+اضغط على زر تحديد موقعي لمعرفة مكانك على الخريطة
+</div>
+
+<div id="map"></div>
+
+<p class="note">
+يمكنك تكبير الخريطة وتحريكها حتى تصل إلى المكان المطلوب.
+</p>
+
+<button class="main-btn" id="calculateBtn"
+onclick="calculateFare()">
+احسب الأجرة
+</button>
+
+<div class="price-box" id="priceBox">
+<div>مسافة الطريق الفعلية</div>
+<strong id="distance">0 كم</strong>
+<hr>
+<div>تفاصيل الحساب</div>
+<div class="price-details" id="details"></div>
+<hr>
+<div>الأجرة النهائية</div>
+<strong id="fare">0 جنيه</strong>
+</div>
+
+<button class="main-btn" onclick="confirmTrip()">
+تأكيد طلب المشوار
+</button>
+
+<div id="message" class="note"></div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+
+// =================================
+// 1- قائمة أماكن العياط
+// =================================
+
+const places = [
+"المحطة",
+"نادي أجياد",
+"نادي العياط",
+"الغريب",
+"مسجد الغريب",
+"منطقة المزرعة بالغريب",
+"الجزيرة",
+"الشونة",
+"شارع أبو هشيمة",
+"شارع المدبح",
+"مستشفى الزهراء",
+"التفتيش",
+"مناقيش كافيه",
+"مطعم إبراهيم الشلنك"
+];
+
+const from = document.getElementById("from");
+const to = document.getElementById("to");
+
+places.forEach(place => {
+  from.add(new Option(place, place));
+  to.add(new Option(place, place));
+});
+
+
+// =================================
+// 2- إنشاء الخريطة
+// =================================
+
+const map = L.map("map", {
+  zoomControl: true
+}).setView([29.62, 31.25], 14);
+
+L.tileLayer(
+  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  {
+    attribution: "© OpenStreetMap contributors",
+    maxZoom: 19
+  }
+).addTo(map);
+
+
+// =================================
+// 3- متغيرات التطبيق
+// =================================
+
+let selecting = null;
+
+let pickupPoint = null;
+let destinationPoint = null;
+
+let pickupMarker = null;
+let destinationMarker = null;
+let userLocationMarker = null;
+
+let routeLine = null;
+
+let currentFare = null;
+let currentDistance = null;
+
+
+// =================================
+// 4- تحديد موقعي الحالي GPS
+// =================================
+
+function getMyLocation() {
+
+  const btn = document.getElementById("myLocationBtn");
+  const status = document.getElementById("status");
+
+  if (!navigator.geolocation) {
+    status.textContent =
+      "المتصفح لا يدعم تحديد الموقع GPS";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "جاري تحديد موقعك...";
+
+  status.textContent =
+    "من فضلك انتظر، جاري البحث عن موقعك";
+
+  navigator.geolocation.getCurrentPosition(
+
+    function(position) {
+
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      const accuracy = position.coords.accuracy;
+
+      const myPosition = L.latLng(lat, lng);
+
+      // تحريك الخريطة لمكانك
+
+      map.setView(myPosition, 17);
+
+      // حذف العلامة القديمة
+
+      if (userLocationMarker) {
+        map.removeLayer(userLocationMarker);
+      }
+
+      // علامة الموقع الحالي
+
+      userLocationMarker = L.circleMarker(myPosition, {
+        radius: 10,
+        color: "#ffffff",
+        weight: 3,
+        fillColor: "#087cff",
+        fillOpacity: 1
+      }).addTo(map);
+
+      userLocationMarker.bindPopup(
+        "📍 أنت هنا<br>دقة الموقع التقريبية: " +
+        Math.round(accuracy) + " متر"
+      ).openPopup();
+
+      status.textContent =
+        "تم تحديد موقعك بنجاح على الخريطة";
+
+      btn.disabled = false;
+      btn.textContent = "📍 تحديث موقعي الحالي";
+
+    },
+
+    function(error) {
+
+      let errorMessage = "";
+
+      if (error.code === 1) {
+        errorMessage =
+          "تم رفض إذن الموقع. اسمح للتطبيق بالوصول للموقع من إعدادات الهاتف.";
+      }
+
+      else if (error.code === 2) {
+        errorMessage =
+          "تعذر معرفة موقعك. تأكد من تشغيل الموقع GPS.";
+      }
+
+      else if (error.code === 3) {
+        errorMessage =
+          "انتهى وقت تحديد الموقع. حاول مرة أخرى.";
+      }
+
+      else {
+        errorMessage =
+          "حدث خطأ أثناء تحديد الموقع.";
+      }
+
+      status.textContent = errorMessage;
+
+      btn.disabled = false;
+      btn.textContent = "📍 حاول تحديد موقعي مرة أخرى";
+
+    },
+
+    {
+      enableHighAccuracy: true,
+      timeout: 20000,
+      maximumAge: 0
+    }
+
+  );
+}
+
+
+// =================================
+// 5- اختيار مكان الركوب
+// =================================
+
+function choosePickup() {
+
+  selecting = "pickup";
+
+  document.getElementById("pickupBtn")
+    .classList.add("active");
+
+  document.getElementById("destinationBtn")
+    .classList.remove("active");
+
+  document.getElementById("status").textContent =
+    "اضغط على الخريطة لتحديد مكان الركوب";
+}
+
+
+// =================================
+// 6- اختيار مكان الوصول
+// =================================
+
+function chooseDestination() {
+
+  selecting = "destination";
+
+  document.getElementById("destinationBtn")
+    .classList.add("active");
+
+  document.getElementById("pickupBtn")
+    .classList.remove("active");
+
+  document.getElementById("status").textContent =
+    "اضغط على الخريطة لتحديد مكان الوصول";
+}
+
+
+// =================================
+// 7- تحديد النقط على الخريطة
+// =================================
+
+map.on("click", function(e) {
+
+  if (selecting === "pickup") {
+
+    pickupPoint = e.latlng;
+
+    if (pickupMarker) {
+      map.removeLayer(pickupMarker);
+    }
+
+    pickupMarker = L.marker(e.latlng)
+      .addTo(map)
+      .bindPopup("📍 مكان الركوب")
+      .openPopup();
+
+    document.getElementById("status").textContent =
+      "تم تحديد مكان الركوب. حدد مكان الوصول الآن";
+
+    selecting = null;
+
+    document.getElementById("pickupBtn")
+      .classList.remove("active");
+
+    resetCalculation();
+  }
+
+  else if (selecting === "destination") {
+
+    destinationPoint = e.latlng;
+
+    if (destinationMarker) {
+      map.removeLayer(destinationMarker);
+    }
+
+    destinationMarker = L.marker(e.latlng)
+      .addTo(map)
+      .bindPopup("🏁 مكان الوصول")
+      .openPopup();
+
+    document.getElementById("status").textContent =
+      "تم تحديد مكان الركوب والوصول بنجاح";
+
+    selecting = null;
+
+    document.getElementById("destinationBtn")
+      .classList.remove("active");
+
+    resetCalculation();
+  }
+
+});
+
+
+// =================================
+// 8- مسح الحساب القديم
+// =================================
+
+function resetCalculation() {
+
+  currentFare = null;
+  currentDistance = null;
+
+  document.getElementById("priceBox").style.display =
+    "none";
+
+  document.getElementById("message").textContent = "";
+
+  if (routeLine) {
+    map.removeLayer(routeLine);
+    routeLine = null;
+  }
+}
+
+
+// =================================
+// 9- حساب مسافة الطريق الفعلية
+// =================================
+
+async function calculateFare() {
+
+  if (!pickupPoint || !destinationPoint) {
+
+    document.getElementById("status").textContent =
+      "من فضلك حدد مكان الركوب ومكان الوصول على الخريطة";
+
+    return;
+  }
+
+  const calculateBtn =
+    document.getElementById("calculateBtn");
+
+  calculateBtn.disabled = true;
+  calculateBtn.textContent =
+    "جاري حساب مسافة الطريق...";
+
+  document.getElementById("status").textContent =
+    "جاري البحث عن أفضل مسار للطريق";
+
+  resetCalculation();
+
+  try {
+
+    const start =
+      pickupPoint.lng + "," + pickupPoint.lat;
+
+    const end =
+      destinationPoint.lng + "," + destinationPoint.lat;
+
+    const url =
+      "https://router.project-osrm.org/route/v1/driving/" +
+      start + ";" + end +
+      "?overview=full&geometries=geojson";
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error("تعذر الاتصال بخدمة الطرق");
+    }
+
+    const data = await response.json();
+
+    if (
+      data.code !== "Ok" ||
+      !data.routes ||
+      data.routes.length === 0
+    ) {
+      throw new Error("لم يتم العثور على طريق مناسب");
+    }
+
+    const route = data.routes[0];
+
+    const meters = route.distance;
+
+    currentDistance = meters / 1000;
+
+    // التسعيرة المعتمدة
+
+    currentFare = 5 + (currentDistance * 10);
+
+    const coordinates =
+      route.geometry.coordinates.map(point => [
+        point[1],
+        point[0]
+      ]);
+
+    routeLine = L.polyline(coordinates, {
+      color: "#16834d",
+      weight: 6,
+      opacity: 0.8
+    }).addTo(map);
+
+    map.fitBounds(routeLine.getBounds(), {
+      padding: [25, 25]
+    });
+
+    document.getElementById("distance").textContent =
+      currentDistance.toFixed(2) + " كم";
+
+    document.getElementById("details").textContent =
+      "فتح العداد: 5 جنيه + " +
+      currentDistance.toFixed(2) +
+      " كم × 10 جنيه";
+
+    document.getElementById("fare").textContent =
+      currentFare.toFixed(2) + " جنيه";
+
+    document.getElementById("priceBox").style.display =
+      "block";
+
+    document.getElementById("status").textContent =
+      "تم حساب مسافة الطريق بنجاح";
+
+  }
+
+  catch(error) {
+
+    currentFare = null;
+
+    document.getElementById("status").textContent =
+      "تعذر حساب مسافة الطريق. تأكد من الإنترنت وحاول مرة أخرى.";
+
+    document.getElementById("message").textContent =
+      error.message;
+
+  }
+
+  finally {
+
+    calculateBtn.disabled = false;
+    calculateBtn.textContent = "احسب الأجرة";
+
+  }
+
+}
+
+
+// =================================
+// 10- تأكيد المشوار
+// =================================
+
+function confirmTrip() {
+
+  if (currentFare === null) {
+
+    document.getElementById("message").textContent =
+      "يجب حساب الأجرة أولاً";
+
+    return;
+  }
+
+  const pickupName =
+    from.value || "موقع محدد على الخريطة";
+
+  const destinationName =
+    to.value || "موقع محدد على الخريطة";
+
+  document.getElementById("message").textContent =
+    "ملخص المشوار: من " +
+    pickupName +
+    " إلى " +
+    destinationName +
+    " - المسافة " +
+    currentDistance.toFixed(2) +
+    " كم - الأجرة " +
+    currentFare.toFixed(2) +
+    " جنيه. هذا طلب تجريبي.";
+
+}
+
+</script>
+
+</body>
+</html>
